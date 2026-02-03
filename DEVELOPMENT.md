@@ -497,9 +497,13 @@ def handle_function_call(message, connection, session):
         if func_name in TOOL_HANDLERS:
             result = TOOL_HANDLERS[func_name](params)
 
-            # Special handling for hangup
+            # Special handling for hangup - notify async context immediately
             if func_name == "hangup":
                 session.should_hangup.set()
+                if session.hangup_async_notify and session.event_loop:
+                    session.event_loop.call_soon_threadsafe(
+                        session.hangup_async_notify.set
+                    )
 
             # Send response back to agent
             response = AgentV1FunctionCallResponseMessage(
@@ -509,6 +513,30 @@ def handle_function_call(message, connection, session):
             )
             connection.send_function_call_response(response)
 ```
+
+### Immediate Hangup Pattern
+
+The hangup tool uses the same cross-thread notification pattern as barge-in:
+
+```
+Deepgram Thread (sync)              Async Context (FastAPI)
+        │                                   │
+        │ hangup tool called                │
+        │         │                         │
+        ▼         ▼                         │
+  session.should_hangup.set()               │
+        │                                   │
+        └─► call_soon_threadsafe( ──────────┼──► hangup_async_notify.set()
+              hangup_async_notify.set       │         │
+            )                               │         ▼
+                                            │   hangup_watcher wakes up
+                                            │         │
+                                            │         ▼
+                                            │   call_manager.hangup()
+                                            │   (call ends immediately)
+```
+
+This ensures the call ends within milliseconds of the tool being triggered, rather than waiting for a timeout.
 
 ### Adding Custom Tools
 
@@ -653,6 +681,37 @@ Options:
 
 ---
 
+## Clean Shutdown
+
+When making outbound calls (without `--server-only`), the script exits cleanly after the call ends.
+
+### How It Works
+
+```
+Call ends (hangup or disconnect)
+        │
+        ▼
+Session closed in finally block
+        │
+        ▼
+shutdown_event.set()  ──────────►  run_server_and_call() wakes up
+                                           │
+                                           ▼
+                                   server.should_exit = True
+                                           │
+                                           ▼
+                                   ngrok tunnel closed
+                                           │
+                                           ▼
+                                   Process exits (code 0)
+```
+
+### Server-Only Mode
+
+With `--server-only`, the server stays running after calls end to handle more calls. Use Ctrl+C to exit.
+
+---
+
 ## Debugging
 
 ### Log Levels
@@ -676,6 +735,9 @@ python telnyx_voice_agent.py --server-only --ngrok --debug
 | `Agent: ...` | Agent response transcription |
 | `[Barge-in] Cleared N chunks + sent clear to Telnyx` | Barge-in processed |
 | `[TOOL] get_secret called` | Tool was invoked |
+| `[Hangup] Executing hangup immediately` | Hangup triggered, call ending |
+| `[Server] Call ended, shutting down...` | Clean shutdown initiated |
+| `[Server] Shutdown signal received` | Server stopping |
 
 ### Common Issues
 

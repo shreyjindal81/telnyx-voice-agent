@@ -4,11 +4,13 @@ AI-powered phone agent using Deepgram Voice Agent API and Telnyx for telephony.
 
 ## Features
 
-- **Phone calls**: Receive and make calls via Telnyx
+- **Outbound calls**: Make AI-powered calls that exit cleanly when complete
 - **Voice AI**: Deepgram Voice Agent API (STT + LLM + TTS in one)
-- **Barge-in**: Interrupt the agent mid-speech
+- **Barge-in**: Interrupt the agent mid-speech (instant response)
+- **Instant hangup**: Call ends immediately when hangup tool is triggered
 - **Tool support**: Client-side function execution (e.g., hangup, custom tools)
 - **Customizable**: Pass custom prompts and greetings via CLI
+- **Built-in ngrok**: Automatic tunnel setup with `--ngrok` flag
 
 ## Requirements
 
@@ -43,36 +45,31 @@ export NGROK_AUTH_TOKEN=your_ngrok_auth_token
 
 ## Usage
 
-### Server-only mode (receive inbound calls):
-```bash
-python telnyx_voice_agent.py --server-only
-```
-
-### With automatic ngrok tunnel:
-```bash
-python telnyx_voice_agent.py --server-only --ngrok
-```
-
-### With custom ngrok domain (paid plan):
-```bash
-python telnyx_voice_agent.py --server-only --ngrok --ngrok-domain your-domain.ngrok-free.dev
-```
-
-### Make an outbound call:
+### Make an outbound call (exits when call ends):
 ```bash
 python telnyx_voice_agent.py --to "+1234567890" --ngrok
 ```
 
 ### Custom agent persona:
 ```bash
-python telnyx_voice_agent.py --server-only --ngrok \
+python telnyx_voice_agent.py --to "+1234567890" --ngrok \
   --prompt "You are a helpful assistant for Acme Corp..." \
   --greeting "Hello! Thanks for calling Acme Corp. How can I help?"
 ```
 
 ### Debug mode:
 ```bash
-python telnyx_voice_agent.py --server-only --debug
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --debug
+```
+
+### Server-only mode (stays running for multiple/inbound calls):
+```bash
+python telnyx_voice_agent.py --server-only --ngrok
+```
+
+### With custom ngrok domain (paid plan):
+```bash
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
 ```
 
 ## Architecture

@@ -480,14 +480,18 @@ app = FastAPI(title="Telnyx Voice Agent")
 config: Config = None
 session_manager: SessionManager = None
 call_manager: CallManager = None
+shutdown_event: asyncio.Event = None  # Signal to shutdown after call ends
+server_only_mode: bool = True  # Whether to stay up after call ends
 
 
-def init_app(prompt: str = None, greeting: str = None):
+def init_app(prompt: str = None, greeting: str = None, server_only: bool = True):
     """Initialize application components."""
-    global config, session_manager, call_manager
+    global config, session_manager, call_manager, shutdown_event, server_only_mode
     config = Config(prompt=prompt, greeting=greeting)
     session_manager = SessionManager(config)
     call_manager = CallManager(config)
+    shutdown_event = asyncio.Event()
+    server_only_mode = server_only
 
 
 @app.websocket("/telnyx")
@@ -654,6 +658,10 @@ async def telnyx_websocket(websocket: WebSocket):
             hangup_task.cancel()
         if session:
             session_manager.close_session(session.stream_id)
+        # Signal shutdown if not in server-only mode
+        if not server_only_mode and shutdown_event:
+            logger.info("[Server] Call ended, shutting down...")
+            shutdown_event.set()
 
 
 @app.post("/webhook")
@@ -768,7 +776,7 @@ def parse_args():
 
 async def run_server_and_call(args, ngrok_url: str = None):
     """Run the server and optionally make a call."""
-    init_app(prompt=args.prompt, greeting=args.greeting)
+    init_app(prompt=args.prompt, greeting=args.greeting, server_only=args.server_only)
 
     # Override public URL if ngrok provided one
     if ngrok_url:
@@ -795,16 +803,23 @@ async def run_server_and_call(args, ngrok_url: str = None):
     if not args.server_only and args.to:
         try:
             await call_manager.initiate_call(args.to)
-            logger.info("Call initiated - waiting...")
+            logger.info("Call initiated - waiting for call to complete...")
         except Exception as e:
             logger.error(f"Call failed: {e}")
+            return
     else:
-        logger.info("Server running in server-only mode")
-
-    logger.info("Press Ctrl+C to exit")
+        logger.info("Server running in server-only mode (press Ctrl+C to exit)")
 
     try:
-        await server_task
+        if args.server_only:
+            # Server-only mode: run until cancelled
+            await server_task
+        else:
+            # Outbound call mode: wait for shutdown signal, then exit
+            await shutdown_event.wait()
+            logger.info("[Server] Shutdown signal received")
+            server.should_exit = True
+            await asyncio.sleep(0.5)  # Give server time to cleanup
     except asyncio.CancelledError:
         pass
 

@@ -4,25 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered phone agent using Deepgram Voice Agent API (STT + LLM + TTS) and Telnyx for telephony. Single-file Python application that bridges phone calls to an AI voice agent.
+AI-powered phone agent using Deepgram Voice Agent API (STT + LLM + TTS) and Telnyx for telephony. Single-file Python application that makes outbound calls with an AI voice agent.
 
 ## Commands
 
 ```bash
-# Run server only (receive inbound calls)
-python telnyx_voice_agent.py --server-only --ngrok
-
-# Make outbound call
+# Make outbound call (exits cleanly after call ends)
 python telnyx_voice_agent.py --to "+1234567890" --ngrok
 
 # With custom agent persona
-python telnyx_voice_agent.py --server-only --ngrok --prompt "You are..." --greeting "Hello!"
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --prompt "You are..." --greeting "Hello!"
 
 # Debug mode (verbose logging)
-python telnyx_voice_agent.py --server-only --ngrok --debug
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --debug
+
+# Server-only mode (stays running for inbound calls)
+python telnyx_voice_agent.py --server-only --ngrok
 
 # Custom ngrok domain (paid plan)
-python telnyx_voice_agent.py --server-only --ngrok --ngrok-domain your-domain.ngrok-free.dev
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
 ```
 
 ## Architecture
@@ -39,16 +39,19 @@ Phone ←→ Telnyx (mulaw 8kHz) ←→ FastAPI ←→ Deepgram Thread (linear16
 
 **Audio conversion**: Telnyx uses mulaw 8kHz (PCMU), Deepgram uses linear16 16kHz. Conversion via `audioop` (or `audioop-lts` for Python 3.13+).
 
-**Barge-in**: When user interrupts, Deepgram sends `UserStartedSpeaking`. Handler clears output queue and sends `{"event": "clear"}` to Telnyx to stop playback immediately.
+**Cross-thread signaling**: Uses `asyncio.Event` + `call_soon_threadsafe()` pattern for immediate notification from sync Deepgram thread to async FastAPI context. Used for:
+- **Barge-in**: `barge_in_async_notify` - clears output queue and sends `{"event": "clear"}` to Telnyx
+- **Hangup**: `hangup_async_notify` - executes hangup immediately when tool is called
 
 ## Key Components in telnyx_voice_agent.py
 
-- `CallSession`: Per-call state including thread-safe queues and threading events
+- `CallSession`: Per-call state including thread-safe queues and async events
 - `deepgram_worker()`: Runs Deepgram connection in dedicated thread, handles message routing
 - `SessionManager`: Creates/tracks/cleanup call sessions
 - `CallManager`: Telnyx API wrapper for outbound calls and hangup
 - `@app.websocket("/telnyx")`: Main WebSocket handler bridging Telnyx ↔ Deepgram
 - `TOOL_HANDLERS`: Dict mapping function names to handlers (e.g., `get_secret`, `hangup`)
+- `shutdown_event`: Signals clean exit after outbound call completes
 
 ## Adding Custom Tools
 
