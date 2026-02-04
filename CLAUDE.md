@@ -15,6 +15,13 @@ python telnyx_voice_agent.py --to "+1234567890" --ngrok
 # With custom agent persona
 python telnyx_voice_agent.py --to "+1234567890" --ngrok --prompt "You are..." --greeting "Hello!"
 
+# With different LLM model (default: claude-3-5-haiku-latest)
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --model "gpt-4o-mini"
+
+# With different TTS voice (default: deepgram/aura-2-thalia-en)
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --voice "elevenlabs/rachel"
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --voice "deepgram/aura-2-orion-en"
+
 # Debug mode (verbose logging)
 python telnyx_voice_agent.py --to "+1234567890" --ngrok --debug
 
@@ -45,13 +52,37 @@ Phone ←→ Telnyx (mulaw 8kHz) ←→ FastAPI ←→ Deepgram Thread (linear16
 
 ## Key Components in telnyx_voice_agent.py
 
-- `CallSession`: Per-call state including thread-safe queues and async events
+- `CallSession`: Per-call state including thread-safe queues, async events, and output sample rate
 - `deepgram_worker()`: Runs Deepgram connection in dedicated thread, handles message routing
 - `SessionManager`: Creates/tracks/cleanup call sessions
 - `CallManager`: Telnyx API wrapper for outbound calls and hangup
 - `@app.websocket("/telnyx")`: Main WebSocket handler bridging Telnyx ↔ Deepgram
 - `TOOL_HANDLERS`: Dict mapping function names to handlers (e.g., `get_secret`, `hangup`)
+- `VALID_MODELS`: Dict mapping provider names to supported model IDs
+- `VALID_VOICES`: Dict mapping TTS providers to voice configurations
+- `create_think_provider()`: Factory function to create the appropriate LLM provider
+- `create_speak_provider()`: Factory function to create the appropriate TTS provider
 - `shutdown_event`: Signals clean exit after outbound call completes
+
+## Supported LLM Models
+
+Deepgram Voice Agent supports multiple LLM providers (managed by Deepgram, no API keys needed):
+
+- **Anthropic**: claude-sonnet-4-5, claude-4-5-haiku-latest, claude-3-5-haiku-latest, claude-sonnet-4-20250514
+- **OpenAI**: gpt-5.1-chat-latest, gpt-5.1, gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, gpt-4o, gpt-4o-mini
+
+Default: `claude-3-5-haiku-latest`
+
+## Supported TTS Voices
+
+Use the `--voice` flag with format `provider/voice-id`:
+
+- **Deepgram** (16kHz output): aura-2-thalia-en, aura-2-luna-en, aura-2-stella-en, aura-2-athena-en, aura-2-hera-en, aura-2-orion-en, aura-2-arcas-en, aura-2-perseus-en, aura-2-angus-en, aura-2-orpheus-en, aura-2-helios-en, aura-2-zeus-en
+- **ElevenLabs** (24kHz output): rachel, adam, bella, josh, elli, sam
+
+Default: `deepgram/aura-2-thalia-en`
+
+Audio conversion handles sample rate differences automatically (16kHz or 24kHz → 8kHz mulaw for Telnyx).
 
 ## Adding Custom Tools
 

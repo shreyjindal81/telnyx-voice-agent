@@ -6,10 +6,11 @@ AI-powered phone agent using Deepgram Voice Agent API and Telnyx for telephony.
 
 - **Outbound calls**: Make AI-powered calls that exit cleanly when complete
 - **Voice AI**: Deepgram Voice Agent API (STT + LLM + TTS in one)
+- **Multiple LLMs**: Choose from Anthropic (Claude) or OpenAI (GPT) models
 - **Barge-in**: Interrupt the agent mid-speech (instant response)
 - **Instant hangup**: Call ends immediately when hangup tool is triggered
 - **Tool support**: Client-side function execution (e.g., hangup, custom tools)
-- **Customizable**: Pass custom prompts and greetings via CLI
+- **Customizable**: Pass custom prompts, greetings, and LLM model via CLI
 - **Built-in ngrok**: Automatic tunnel setup with `--ngrok` flag
 
 ## Requirements
@@ -57,6 +58,15 @@ python telnyx_voice_agent.py --to "+1234567890" --ngrok \
   --greeting "Hello! Thanks for calling Acme Corp. How can I help?"
 ```
 
+### Use a different LLM model:
+```bash
+# Use OpenAI GPT-4o-mini instead of default Claude
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --model "gpt-4o-mini"
+
+# Use Claude Sonnet 4.5
+python telnyx_voice_agent.py --to "+1234567890" --ngrok --model "claude-sonnet-4-5"
+```
+
 ### Debug mode:
 ```bash
 python telnyx_voice_agent.py --to "+1234567890" --ngrok --debug
@@ -91,7 +101,18 @@ python telnyx_voice_agent.py --to "+1234567890" --ngrok --ngrok-domain your-doma
 
 - **Telnyx**: Handles phone connectivity, sends/receives mulaw 8kHz audio
 - **FastAPI**: WebSocket server bridging Telnyx and Deepgram
-- **Deepgram Voice Agent**: All-in-one STT + LLM (Claude) + TTS
+- **Deepgram Voice Agent**: All-in-one STT + LLM + TTS (configurable model)
+
+## Supported LLM Models
+
+Use `--model` to select the LLM (managed by Deepgram):
+
+| Provider | Models |
+|----------|--------|
+| **Anthropic** | claude-sonnet-4-5, claude-4-5-haiku-latest, claude-3-5-haiku-latest (default), claude-sonnet-4-20250514 |
+| **OpenAI** | gpt-5.1-chat-latest, gpt-5.1, gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, gpt-4o, gpt-4o-mini |
+
+Run `python telnyx_voice_agent.py --help` to see all available models.
 
 ## Environment Variables
 

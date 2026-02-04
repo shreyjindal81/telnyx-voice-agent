@@ -50,7 +50,7 @@ This guide explains the infrastructure, architecture, and internals of the Telny
 │   Cloud API   │                                      │  Voice Agent  │
 │               │                                      │     API       │
 │  - SIP/PSTN   │                                      │  - STT (nova) │
-│  - WebSocket  │                                      │  - LLM (Claude)│
+│  - WebSocket  │                                      │  - LLM (select)│
 │    streaming  │                                      │  - TTS (aura) │
 └───────────────┘                                      └───────────────┘
         │
@@ -652,7 +652,7 @@ def start_ngrok(port: int, domain: str = None) -> str:
 
 ```python
 class Config:
-    def __init__(self, prompt: str = None, greeting: str = None):
+    def __init__(self, prompt: str = None, greeting: str = None, model: str = None):
         self.telnyx_api_key = os.environ.get("TELNYX_API_KEY", "")
         self.telnyx_connection_id = os.environ.get("TELNYX_CONNECTION_ID", "")
         self.telnyx_phone_number = os.environ.get("TELNYX_PHONE_NUMBER", "")
@@ -660,8 +660,9 @@ class Config:
         self.public_ws_url = os.environ.get("PUBLIC_WS_URL", "")
         self.server_host = os.environ.get("SERVER_HOST", "0.0.0.0")
         self.server_port = int(os.environ.get("SERVER_PORT", "8765"))
-        self.agent_prompt = prompt    # CLI override
+        self.agent_prompt = prompt      # CLI override
         self.agent_greeting = greeting  # CLI override
+        self.agent_model = model or DEFAULT_MODEL  # CLI override (default: claude-3-5-haiku-latest)
 ```
 
 ### CLI Arguments
@@ -674,10 +675,22 @@ Options:
   --server-only         Only run server, don't make outbound call
   --prompt TEXT         Custom system prompt for the agent
   --greeting TEXT       Custom greeting message
+  --model MODEL         LLM model to use (default: claude-3-5-haiku-latest)
   --ngrok               Start ngrok tunnel automatically
   --ngrok-domain DOMAIN Custom ngrok domain (paid plan)
   --debug               Enable debug logging
 ```
+
+### Supported LLM Models
+
+The `--model` parameter accepts models from these providers (managed by Deepgram):
+
+| Provider | Models |
+|----------|--------|
+| **Anthropic** | claude-sonnet-4-5, claude-4-5-haiku-latest, claude-3-5-haiku-latest, claude-sonnet-4-20250514 |
+| **OpenAI** | gpt-5.1-chat-latest, gpt-5.1, gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, gpt-4o, gpt-4o-mini |
+
+The provider is automatically determined from the model name. Invalid models are rejected at startup.
 
 ---
 
@@ -767,6 +780,11 @@ python telnyx_voice_agent.py --to "+1234567890" --ngrok
 
 ```
 telnyx_voice_agent.py
+├── LLM Model Configuration
+│   ├── VALID_MODELS dict
+│   ├── get_provider_for_model()
+│   ├── validate_model()
+│   └── get_all_valid_models()
 ├── Configuration
 │   └── class Config
 ├── Audio Conversion
@@ -780,6 +798,7 @@ telnyx_voice_agent.py
 │   ├── class CallSession
 │   └── class SessionManager
 ├── Deepgram Worker
+│   ├── create_think_provider()
 │   ├── create_agent_settings()
 │   ├── deepgram_worker()
 │   └── handle_function_call()

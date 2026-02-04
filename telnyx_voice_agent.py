@@ -40,8 +40,10 @@ from deepgram.extensions.types.sockets import (
     AgentV1ListenProvider,
     AgentV1Think,
     AgentV1AnthropicThinkProvider,
+    AgentV1OpenAiThinkProvider,
     AgentV1SpeakProviderConfig,
     AgentV1DeepgramSpeakProvider,
+    AgentV1ElevenLabsSpeakProvider,
     AgentV1Function,
     AgentV1FunctionCallResponseMessage,
 )
@@ -66,12 +68,134 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================
+# LLM MODEL CONFIGURATION
+# ============================================
+
+# Valid models per provider (managed by Deepgram - no custom endpoint required)
+VALID_MODELS = {
+    "anthropic": [
+        "claude-sonnet-4-5",
+        "claude-4-5-haiku-latest",
+        "claude-3-5-haiku-latest",
+        "claude-sonnet-4-20250514",
+    ],
+    "open_ai": [
+        "gpt-5.1-chat-latest",
+        "gpt-5.1",
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
+        "gpt-4o",
+        "gpt-4o-mini",
+    ],
+}
+
+DEFAULT_MODEL = "claude-3-5-haiku-latest"
+
+
+# ============================================
+# TTS VOICE CONFIGURATION
+# ============================================
+
+VALID_VOICES = {
+    "deepgram": {
+        "aura-2-thalia-en": {"description": "Thalia (Female, American)"},
+        "aura-2-luna-en": {"description": "Luna (Female, American)"},
+        "aura-2-stella-en": {"description": "Stella (Female, American)"},
+        "aura-2-athena-en": {"description": "Athena (Female, British)"},
+        "aura-2-hera-en": {"description": "Hera (Female, American)"},
+        "aura-2-orion-en": {"description": "Orion (Male, American)"},
+        "aura-2-arcas-en": {"description": "Arcas (Male, American)"},
+        "aura-2-perseus-en": {"description": "Perseus (Male, American)"},
+        "aura-2-angus-en": {"description": "Angus (Male, Irish)"},
+        "aura-2-orpheus-en": {"description": "Orpheus (Male, American)"},
+        "aura-2-helios-en": {"description": "Helios (Male, British)"},
+        "aura-2-zeus-en": {"description": "Zeus (Male, American)"},
+    },
+    "elevenlabs": {
+        "rachel": {"voice_id": "21m00Tcm4TlvDq8ikWAM", "description": "Rachel (Female, American)"},
+        "adam": {"voice_id": "pNInz6obpgDQGcFmaJgB", "description": "Adam (Male, American)"},
+        "bella": {"voice_id": "EXAVITQu4vr4xnSDxMaL", "description": "Bella (Female, American)"},
+        "josh": {"voice_id": "TxGEqnHWrfWFTfGW9XjX", "description": "Josh (Male, American)"},
+        "elli": {"voice_id": "MF3mGyEYCl7XYWbV9V6O", "description": "Elli (Female, American)"},
+        "sam": {"voice_id": "yoZ06aMxZJJ28mfd3POQ", "description": "Sam (Male, American)"},
+    },
+}
+
+DEFAULT_VOICE = "elevenlabs/rachel"
+
+
+def get_voice_config(voice_str: str) -> tuple[str, str, dict]:
+    """Parse voice string and return (provider, voice_name, config)."""
+    if "/" not in voice_str:
+        raise ValueError(f"Invalid voice format '{voice_str}'. Use 'provider/voice-id' format.")
+
+    provider, voice_name = voice_str.split("/", 1)
+
+    if provider not in VALID_VOICES:
+        raise ValueError(f"Unknown voice provider '{provider}'. Valid providers: {', '.join(VALID_VOICES.keys())}")
+
+    if voice_name not in VALID_VOICES[provider]:
+        valid_voices = list(VALID_VOICES[provider].keys())
+        raise ValueError(f"Unknown voice '{voice_name}' for provider '{provider}'. Valid voices: {', '.join(valid_voices)}")
+
+    return provider, voice_name, VALID_VOICES[provider][voice_name]
+
+
+def validate_voice(voice_str: str) -> bool:
+    """Check if a voice string is valid."""
+    try:
+        get_voice_config(voice_str)
+        return True
+    except ValueError:
+        return False
+
+
+def get_all_valid_voices() -> list[str]:
+    """Get a list of all valid voice strings."""
+    voices = []
+    for provider, voice_dict in VALID_VOICES.items():
+        for voice_name in voice_dict.keys():
+            voices.append(f"{provider}/{voice_name}")
+    return voices
+
+
+def get_voice_sample_rate(voice_str: str) -> int:
+    """Get the output sample rate for a voice provider."""
+    provider, _, _ = get_voice_config(voice_str)
+    if provider == "elevenlabs":
+        return 24000
+    return 16000  # Deepgram default
+
+
+def get_provider_for_model(model: str) -> str:
+    """Get the provider type for a given model."""
+    for provider, models in VALID_MODELS.items():
+        if model in models:
+            return provider
+    return None
+
+
+def validate_model(model: str) -> bool:
+    """Check if a model is valid."""
+    return get_provider_for_model(model) is not None
+
+
+def get_all_valid_models() -> list[str]:
+    """Get a flat list of all valid models."""
+    return [model for models in VALID_MODELS.values() for model in models]
+
+
+# ============================================
 # CONFIGURATION
 # ============================================
 
 class Config:
     """Application configuration."""
-    def __init__(self, prompt: str = None, greeting: str = None):
+    def __init__(self, prompt: str = None, greeting: str = None, model: str = None, voice: str = None):
         self.telnyx_api_key = os.environ.get("TELNYX_API_KEY", "")
         self.telnyx_connection_id = os.environ.get("TELNYX_CONNECTION_ID", "")
         self.telnyx_phone_number = os.environ.get("TELNYX_PHONE_NUMBER", "")
@@ -82,16 +206,20 @@ class Config:
         # Agent customization
         self.agent_prompt = prompt
         self.agent_greeting = greeting
+        self.agent_model = model or DEFAULT_MODEL
+        self.agent_voice = voice or DEFAULT_VOICE
 
 
-# Agent configuration (same as local voice agent)
-AGENT_PROMPT = """You are a helpful customer support agent for Apex Mobile.
-You can help users with their account, billing questions, and technical support.
-When a user asks for their secret code, use the get_secret function to retrieve it.
-When the user says goodbye, wants to end the call, or indicates they're done, use the hangup function to end the call.
-Be friendly, concise, and helpful."""
+# Agent configuration
+AGENT_PROMPT = """You are a test voice agent. This is a demo environment for testing voice AI capabilities.
 
-GREETING = "Hello! Welcome to Apex Mobile support. How can I help you today?"
+Available tools you can use:
+- get_secret: Returns a test secret code when the user asks for it
+- hangup: Ends the call when the user says goodbye or wants to hang up
+
+Be friendly and concise. Let users know they can test the available tools."""
+
+GREETING = "Hi! This is a test voice agent. You can ask me for a secret code or just chat. Say goodbye when you're done."
 
 
 # ============================================
@@ -111,6 +239,15 @@ def linear16_16k_to_mulaw_8k(linear_data: bytes) -> bytes:
     """Convert linear16 16kHz (Deepgram) to mulaw 8kHz (Telnyx)."""
     # Resample from 16kHz to 8kHz
     linear_8k, _ = audioop.ratecv(linear_data, 2, 1, 16000, 8000, None)
+    # Encode to mulaw
+    mulaw_data = audioop.lin2ulaw(linear_8k, 2)
+    return mulaw_data
+
+
+def linear16_24k_to_mulaw_8k(linear_data: bytes) -> bytes:
+    """Convert linear16 24kHz (ElevenLabs) to mulaw 8kHz (Telnyx)."""
+    # Resample from 24kHz to 8kHz
+    linear_8k, _ = audioop.ratecv(linear_data, 2, 1, 24000, 8000, None)
     # Encode to mulaw
     mulaw_data = audioop.lin2ulaw(linear_8k, 2)
     return mulaw_data
@@ -145,13 +282,16 @@ TOOL_HANDLERS = {
 class CallSession:
     """Manages a single phone call session with thread-safe queues."""
 
-    def __init__(self, stream_id: str, call_control_id: str):
+    def __init__(self, stream_id: str, call_control_id: str, output_sample_rate: int = 16000):
         self.stream_id = stream_id
         self.call_control_id = call_control_id
 
         # Thread-safe queues for audio bridging
         self.input_queue = queue.Queue()   # Telnyx audio → Deepgram
         self.output_queue = queue.Queue()  # Deepgram audio → Telnyx
+
+        # Audio configuration
+        self.output_sample_rate = output_sample_rate  # Sample rate from TTS provider
 
         # Threading events
         self.barge_in_event = threading.Event()
@@ -175,10 +315,62 @@ class CallSession:
 # DEEPGRAM WORKER THREAD
 # ============================================
 
-def create_agent_settings(prompt: str = None, greeting: str = None) -> AgentV1SettingsMessage:
+def create_think_provider(model: str):
+    """Create the appropriate think provider for the given model."""
+    provider_type = get_provider_for_model(model)
+
+    if provider_type == "anthropic":
+        return AgentV1AnthropicThinkProvider(
+            type="anthropic",
+            model=model,
+        )
+    elif provider_type == "open_ai":
+        return AgentV1OpenAiThinkProvider(
+            type="open_ai",
+            model=model,
+        )
+    else:
+        # Fallback to anthropic with default model
+        logger.warning(f"Unknown model {model}, falling back to {DEFAULT_MODEL}")
+        return AgentV1AnthropicThinkProvider(
+            type="anthropic",
+            model=DEFAULT_MODEL,
+        )
+
+
+def create_speak_provider(voice: str):
+    """Create the appropriate speak provider for the given voice."""
+    provider, voice_name, voice_config = get_voice_config(voice)
+
+    if provider == "deepgram":
+        return AgentV1DeepgramSpeakProvider(
+            type="deepgram",
+            model=voice_name,
+        )
+    elif provider == "elevenlabs":
+        return AgentV1ElevenLabsSpeakProvider(
+            type="eleven_labs",
+            model_id="eleven_turbo_v2_5",
+            voice_id=voice_config["voice_id"],
+        )
+    else:
+        # Fallback to Deepgram default
+        logger.warning(f"Unknown voice provider {provider}, falling back to Deepgram")
+        return AgentV1DeepgramSpeakProvider(
+            type="deepgram",
+            model="aura-2-thalia-en",
+        )
+
+
+def create_agent_settings(prompt: str = None, greeting: str = None, model: str = None, voice: str = None) -> AgentV1SettingsMessage:
     """Create Deepgram Voice Agent settings."""
     agent_prompt = prompt or AGENT_PROMPT
     agent_greeting = greeting or GREETING
+    agent_model = model or DEFAULT_MODEL
+    agent_voice = voice or DEFAULT_VOICE
+
+    # Determine output sample rate based on voice provider
+    output_sample_rate = get_voice_sample_rate(agent_voice)
 
     return AgentV1SettingsMessage(
         audio=AgentV1AudioConfig(
@@ -188,7 +380,7 @@ def create_agent_settings(prompt: str = None, greeting: str = None) -> AgentV1Se
             ),
             output=AgentV1AudioOutput(
                 encoding="linear16",
-                sample_rate=16000,
+                sample_rate=output_sample_rate,
                 container="none",
             ),
         ),
@@ -201,10 +393,7 @@ def create_agent_settings(prompt: str = None, greeting: str = None) -> AgentV1Se
                 )
             ),
             think=AgentV1Think(
-                provider=AgentV1AnthropicThinkProvider(
-                    type="anthropic",
-                    model="claude-3-5-haiku-latest",
-                ),
+                provider=create_think_provider(agent_model),
                 prompt=agent_prompt,
                 functions=[
                     AgentV1Function(
@@ -220,10 +409,7 @@ def create_agent_settings(prompt: str = None, greeting: str = None) -> AgentV1Se
                 ]
             ),
             speak=AgentV1SpeakProviderConfig(
-                provider=AgentV1DeepgramSpeakProvider(
-                    type="deepgram",
-                    model="aura-2-thalia-en",
-                )
+                provider=create_speak_provider(agent_voice)
             ),
             greeting=agent_greeting,
         ),
@@ -303,7 +489,9 @@ def deepgram_worker(session: CallSession, config: Config):
             logger.info("[Deepgram] Sending agent settings...")
             connection.send_settings(create_agent_settings(
                 prompt=config.agent_prompt,
-                greeting=config.agent_greeting
+                greeting=config.agent_greeting,
+                model=config.agent_model,
+                voice=config.agent_voice
             ))
 
             # Start listener in sub-thread (like local agent)
@@ -401,7 +589,9 @@ class SessionManager:
 
     def create_session(self, stream_id: str, call_control_id: str) -> CallSession:
         """Create a new call session and start Deepgram worker."""
-        session = CallSession(stream_id, call_control_id)
+        # Get output sample rate based on configured voice
+        output_sample_rate = get_voice_sample_rate(self.config.agent_voice)
+        session = CallSession(stream_id, call_control_id, output_sample_rate=output_sample_rate)
 
         # Start Deepgram in dedicated thread
         session.deepgram_thread = threading.Thread(
@@ -484,10 +674,10 @@ shutdown_event: asyncio.Event = None  # Signal to shutdown after call ends
 server_only_mode: bool = True  # Whether to stay up after call ends
 
 
-def init_app(prompt: str = None, greeting: str = None, server_only: bool = True):
+def init_app(prompt: str = None, greeting: str = None, model: str = None, voice: str = None, server_only: bool = True):
     """Initialize application components."""
     global config, session_manager, call_manager, shutdown_event, server_only_mode
-    config = Config(prompt=prompt, greeting=greeting)
+    config = Config(prompt=prompt, greeting=greeting, model=model, voice=voice)
     session_manager = SessionManager(config)
     call_manager = CallManager(config)
     shutdown_event = asyncio.Event()
@@ -560,8 +750,11 @@ async def telnyx_websocket(websocket: WebSocket):
                     await handle_barge_in()
                     continue
 
-                # Convert and send to Telnyx
-                mulaw_audio = linear16_16k_to_mulaw_8k(audio)
+                # Convert and send to Telnyx (use appropriate converter based on sample rate)
+                if session.output_sample_rate == 24000:
+                    mulaw_audio = linear16_24k_to_mulaw_8k(audio)
+                else:
+                    mulaw_audio = linear16_16k_to_mulaw_8k(audio)
                 audio_base64 = base64.b64encode(mulaw_audio).decode("utf-8")
 
                 message = {
@@ -758,10 +951,39 @@ def stop_ngrok():
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Telnyx Voice Agent")
+    # Build voice help text
+    deepgram_voices = [f"deepgram/{v}" for v in VALID_VOICES["deepgram"].keys()]
+    elevenlabs_voices = [f"elevenlabs/{v}" for v in VALID_VOICES["elevenlabs"].keys()]
+
+    parser = argparse.ArgumentParser(
+        description="Telnyx Voice Agent",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+Available models:
+  Anthropic: {', '.join(VALID_MODELS['anthropic'])}
+  OpenAI:    {', '.join(VALID_MODELS['open_ai'])}
+
+Available voices (format: provider/voice-id):
+  Deepgram:   {', '.join(deepgram_voices[:4])}
+              {', '.join(deepgram_voices[4:8])}
+              {', '.join(deepgram_voices[8:])}
+  ElevenLabs: {', '.join(elevenlabs_voices)}
+
+Default model: {DEFAULT_MODEL}
+Default voice: {DEFAULT_VOICE}
+"""
+    )
     parser.add_argument("--to", type=str, help="Phone number to call")
     parser.add_argument("--prompt", type=str, help="System prompt for the agent")
     parser.add_argument("--greeting", type=str, help="Initial greeting message")
+    parser.add_argument(
+        "--model", type=str, default=DEFAULT_MODEL,
+        help=f"LLM model to use (default: {DEFAULT_MODEL})"
+    )
+    parser.add_argument(
+        "--voice", type=str, default=DEFAULT_VOICE,
+        help=f"TTS voice as provider/voice-id (default: {DEFAULT_VOICE})"
+    )
     parser.add_argument("--server-only", action="store_true", help="Only run server")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--ngrok", action="store_true", help="Start ngrok tunnel automatically")
@@ -771,12 +993,22 @@ def parse_args():
     if not args.server_only and not args.to:
         parser.error("--to is required unless using --server-only")
 
+    # Validate model
+    if not validate_model(args.model):
+        valid_models = get_all_valid_models()
+        parser.error(f"Invalid model '{args.model}'. Valid models: {', '.join(valid_models)}")
+
+    # Validate voice
+    if not validate_voice(args.voice):
+        valid_voices = get_all_valid_voices()
+        parser.error(f"Invalid voice '{args.voice}'. Valid voices: {', '.join(valid_voices)}")
+
     return args
 
 
 async def run_server_and_call(args, ngrok_url: str = None):
     """Run the server and optionally make a call."""
-    init_app(prompt=args.prompt, greeting=args.greeting, server_only=args.server_only)
+    init_app(prompt=args.prompt, greeting=args.greeting, model=args.model, voice=args.voice, server_only=args.server_only)
 
     # Override public URL if ngrok provided one
     if ngrok_url:
@@ -788,6 +1020,8 @@ async def run_server_and_call(args, ngrok_url: str = None):
         logger.info(f"Custom prompt: {config.agent_prompt[:50]}...")
     if config.agent_greeting:
         logger.info(f"Custom greeting: {config.agent_greeting}")
+    logger.info(f"Using model: {config.agent_model} ({get_provider_for_model(config.agent_model)})")
+    logger.info(f"Using voice: {config.agent_voice}")
 
     server_config = uvicorn.Config(
         app,
