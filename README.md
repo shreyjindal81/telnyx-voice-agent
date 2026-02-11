@@ -19,6 +19,27 @@ This project bridges Telnyx media streams to Deepgram Voice Agent and gives you 
 - Recording is downloaded locally, then deleted from Telnyx automatically
 - Clear terminal trace of the full interaction (`User: ...`, `Agent: ...`, lifecycle logs)
 
+## Use Cases
+
+- Appointment confirmations for clinics, salons, and local service businesses
+- Sales follow-ups that must reference specific quote/order details
+- Reminder calls (payment, pickup, callback windows)
+- Multi-step customer operations where transcript + recording audit trail matters
+- Internal QA testing for voice prompts, latency, and interruption handling
+
+## Live Demo Output
+
+```text
+2026-02-11T02:35:30.487Z - INFO - [Deepgram] Settings applied - Agent ready
+2026-02-11T02:35:30.732Z - INFO - Agent: Hi there! How are you doing today?
+2026-02-11T02:35:34.130Z - INFO - User: Good. How are you?
+2026-02-11T02:35:35.016Z - INFO - Agent: I'm doing well, thanks for asking!
+2026-02-11T02:35:52.368Z - INFO - [Recording] Waiting for recording URL for v3:A3ex...
+2026-02-11T02:35:55.032Z - INFO - [Recording] Download URL: https://s3.amazonaws.com/...mp3
+2026-02-11T02:35:55.416Z - INFO - [Recording] Saved locally: /.../recordings/2026-02-11T02-35-55-290Z_v3_A3ex....mp3
+2026-02-11T02:35:55.734Z - INFO - [Recording] Deleted from Telnyx: 3cebcc84-dba0-4aaf-a064-ba047d8e6ba5
+```
+
 ## What Happens On Each Call
 
 1. Call is created through Telnyx with recording from answer enabled.
@@ -65,6 +86,9 @@ node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok \
 ```
 
 ## Cost Analysis (As of February 11, 2026)
+
+Quick formula for this repo:
+- `Estimated total per minute = Deepgram Voice Agent tier ($0.05-$0.08) + Telnyx subtotal (~$0.0125 for typical US local outbound with streaming + recording)`
 
 ### 1) Deepgram
 
