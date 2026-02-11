@@ -1,10 +1,10 @@
 ---
-name: telnyx-voice-agent
+name: clawcall-ai
 description: Run AI-powered outbound phone calls with Telnyx + Deepgram Voice Agent. Use when the user wants real phone outreach (follow-ups, confirmations, reminders, callbacks) with configurable personality, task context, model, and voice.
 metadata: {"openclaw": {"emoji": "📞", "requires": {"bins": ["node", "npm"], "env": ["TELNYX_API_KEY", "TELNYX_CONNECTION_ID", "TELNYX_PHONE_NUMBER", "DEEPGRAM_API_KEY"]}, "primaryEnv": "TELNYX_API_KEY", "os": ["darwin", "linux"]}}
 ---
 
-# Telnyx Voice Agent - Outbound Calls
+# ClawCall AI - Outbound Calls
 
 Make realistic AI phone calls with natural conversation flow.
 

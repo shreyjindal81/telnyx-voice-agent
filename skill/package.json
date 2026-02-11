@@ -1,8 +1,8 @@
 {
-  "name": "telnyx-voice-agent",
+  "name": "clawcall-ai",
   "version": "1.0.1",
   "private": true,
-  "description": "AI-powered phone agent using Deepgram Voice Agent API and Telnyx.",
+  "description": "ClawCall AI: outbound phone agent using Deepgram Voice Agent API and Telnyx.",
   "main": "telnyx_voice_agent.js",
   "keywords": [
     "openclaw",

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered phone agent using Deepgram Voice Agent API (STT + LLM + TTS) and Telnyx for telephony. Single-file Node.js application that makes outbound calls with an AI voice agent.
+ClawCall AI is an AI-powered phone agent using Deepgram Voice Agent API (STT + LLM + TTS) and Telnyx for telephony. Single-file Node.js application that makes outbound calls with an AI voice agent.
 
 The script manages tunnels with `@ngrok/ngrok` when `--ngrok` is used.
 Call recordings are enabled by default, saved locally, then deleted from Telnyx after successful download.
