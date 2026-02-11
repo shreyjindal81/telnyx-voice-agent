@@ -1,8 +1,8 @@
-# ClawCall AI
+# ClawCall
 
 Production-style AI phone calls with real PSTN delivery.
 
-ClawCall AI bridges Telnyx media streams to Deepgram Voice Agent and gives you a CLI for outbound and server-only calling workflows. It is designed for practical outreach use cases: confirmations, follow-ups, reminders, callbacks, and scripted operations calls.
+ClawCall bridges Telnyx media streams to Deepgram Voice Agent and gives you a CLI for outbound and server-only calling workflows. It is designed for practical outreach use cases: confirmations, follow-ups, reminders, callbacks, and scripted operations calls.
 
 ## Skill-First Structure
 
@@ -260,8 +260,8 @@ npx clawhub login
 
 ```bash
 npx clawhub publish ./skill \
-  --slug clawcall-ai \
-  --name "ClawCall AI" \
+  --slug clawcall \
+  --name "ClawCall" \
   --version 1.0.1 \
   --tags latest,voice,phone,telnyx,deepgram \
   --changelog "Default full-call recording, local persistence, post-download Telnyx cleanup, and docs refresh."

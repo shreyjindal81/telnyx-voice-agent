@@ -1,10 +1,10 @@
 #!/bin/bash
-# Install ClawCall AI skill for OpenClaw
+# Install ClawCall skill for OpenClaw
 # Usage: ./scripts/install-openclaw-skill.sh
 
 set -e
 
-SKILL_NAME="clawcall-ai"
+SKILL_NAME="clawcall"
 SKILL_DIR="${HOME}/.openclaw/workspace/skills/${SKILL_NAME}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
