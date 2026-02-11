@@ -14,15 +14,16 @@ echo "Installing ${SKILL_NAME} skill for OpenClaw..."
 mkdir -p "$SKILL_DIR"
 
 # Copy skill files
-cp "${SCRIPT_DIR}/telnyx_voice_agent.py" "$SKILL_DIR/"
-cp "${SCRIPT_DIR}/requirements.txt" "$SKILL_DIR/"
+cp "${SCRIPT_DIR}/telnyx_voice_agent.js" "$SKILL_DIR/"
+cp "${SCRIPT_DIR}/package.json" "$SKILL_DIR/"
+cp "${SCRIPT_DIR}/.env.example" "$SKILL_DIR/"
 
 # Create SKILL.md
-cat > "$SKILL_DIR/SKILL.md" << 'EOF'
+cat > "$SKILL_DIR/SKILL.md" << 'EOM'
 ---
 name: telnyx-voice-agent
-description: Make AI-powered outbound phone calls using Telnyx telephony and Deepgram Voice Agent API. Supports multiple TTS voices (ElevenLabs, Deepgram) and LLM models.
-metadata: {"openclaw": {"emoji": "📞", "requires": {"bins": ["python3"], "env": ["TELNYX_API_KEY", "TELNYX_CONNECTION_ID", "TELNYX_PHONE_NUMBER", "DEEPGRAM_API_KEY"]}, "os": ["darwin", "linux"]}}
+description: Run AI-powered outbound phone calls with Telnyx + Deepgram Voice Agent. Use when the user wants real phone outreach (follow-ups, confirmations, reminders, callbacks) with configurable personality, task context, model, and voice.
+metadata: {"openclaw": {"emoji": "📞", "requires": {"bins": ["node", "npm"], "env": ["TELNYX_API_KEY", "TELNYX_CONNECTION_ID", "TELNYX_PHONE_NUMBER", "DEEPGRAM_API_KEY"]}, "primaryEnv": "TELNYX_API_KEY", "os": ["darwin", "linux"]}}
 ---
 
 # Telnyx Voice Agent
@@ -31,46 +32,54 @@ Make AI-powered outbound phone calls with customizable personas, voices, and beh
 
 ## Prerequisites
 
-Install Python dependencies (one-time):
+Install JavaScript dependencies (one-time):
 ```bash
-pip install -r {baseDir}/requirements.txt
+npm --prefix {baseDir} install
 ```
+
+If using `--ngrok`, `NGROK_AUTH_TOKEN` must be configured and the ngrok account must be verified.
+If not using `--ngrok`, set `PUBLIC_WS_URL` to a reachable `wss://.../telnyx` endpoint.
 
 ## Usage
 
 When the user wants to make a phone call, collect:
 - **phone_number** (required): E.164 format (e.g., +15551234567)
-- **prompt** (optional): Custom system prompt for the AI agent persona
+- **personality** (optional): Agent identity/persona for the call
+- **task** (optional): Detailed objective for the call
 - **greeting** (optional): What the agent says when the call connects
 - **voice** (optional): TTS voice - format: `provider/voice-id`
   - ElevenLabs: rachel, adam, bella, josh, elli, sam
   - Deepgram: aura-2-thalia-en, aura-2-orion-en, etc.
-- **model** (optional): LLM model (default: claude-3-5-haiku-latest)
+- **model** (optional): LLM model (default: gpt-4o-mini)
 
 ## Commands
 
 ### Make an outbound call:
 ```bash
-python3 {baseDir}/telnyx_voice_agent.py --to "<phone_number>" --ngrok
+node {baseDir}/telnyx_voice_agent.js --to "<phone_number>" --ngrok
 ```
 
-### With custom persona:
+### With personality and task:
 ```bash
-python3 {baseDir}/telnyx_voice_agent.py --to "<phone_number>" --ngrok --prompt "<persona>" --greeting "<greeting>"
+node {baseDir}/telnyx_voice_agent.js --to "<phone_number>" --ngrok \
+  --personality "<persona>" \
+  --task "<task>" \
+  --greeting "<greeting>"
 ```
 
 ### With specific voice:
 ```bash
-python3 {baseDir}/telnyx_voice_agent.py --to "<phone_number>" --ngrok --voice "elevenlabs/rachel"
+node {baseDir}/telnyx_voice_agent.js --to "<phone_number>" --ngrok --voice "elevenlabs/rachel"
 ```
 
 ### Full example:
 ```bash
-python3 {baseDir}/telnyx_voice_agent.py \
+node {baseDir}/telnyx_voice_agent.js \
   --to "+15551234567" \
   --ngrok \
-  --prompt "You are a friendly sales representative from Acme Corp" \
-  --greeting "Hi! This is Sarah from Acme Corp, how can I help you today?" \
+  --personality "You are a friendly sales representative from Acme Corp" \
+  --task "Follow up with Morgan on quote three seven one nine and confirm best callback time" \
+  --greeting "Hi! This is Sarah from Acme Corp, is this a good time to talk?" \
   --voice "elevenlabs/rachel" \
   --model "claude-3-5-haiku-latest"
 ```
@@ -93,7 +102,7 @@ python3 {baseDir}/telnyx_voice_agent.py \
 - The call runs until the other party hangs up or the agent triggers hangup
 - ngrok tunnel is automatically managed (no manual setup needed)
 - Environment variables must be configured in OpenClaw settings
-EOF
+EOM
 
 echo ""
 echo "✅ ${SKILL_NAME} skill installed to: $SKILL_DIR"
@@ -106,8 +115,9 @@ echo "   - TELNYX_API_KEY"
 echo "   - TELNYX_CONNECTION_ID"
 echo "   - TELNYX_PHONE_NUMBER"
 echo "   - DEEPGRAM_API_KEY"
+echo "   - NGROK_AUTH_TOKEN (if using --ngrok)"
 echo ""
-echo "📚 Install Python dependencies with:"
-echo "   pip install -r $SKILL_DIR/requirements.txt"
+echo "📚 Install JavaScript dependencies with:"
+echo "   npm --prefix $SKILL_DIR install"
 echo ""
 echo "🎉 Done! Try asking OpenClaw: \"Call +15551234567\""

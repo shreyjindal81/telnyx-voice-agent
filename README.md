@@ -10,21 +10,21 @@ AI-powered phone agent using Deepgram Voice Agent API and Telnyx for telephony.
 - **Barge-in**: Interrupt the agent mid-speech (instant response)
 - **Instant hangup**: Call ends immediately when hangup tool is triggered
 - **Tool support**: Client-side function execution (e.g., hangup, custom tools)
-- **Customizable**: Pass custom prompts, greetings, and LLM model via CLI
+- **Customizable**: Pass personality, task, greeting, voice, and LLM model via CLI
 - **Built-in ngrok**: Automatic tunnel setup with `--ngrok` flag
 
 ## Requirements
 
-- Python 3.10+
+- Node.js 18+
 - Telnyx account with a phone number and TeXML application
 - Deepgram account with Voice Agent API access
-- ngrok (or similar) for exposing local server
+- Verified ngrok account + `NGROK_AUTH_TOKEN` if using `--ngrok`
 
 ## Setup
 
 1. Install dependencies:
 ```bash
-pip install -r requirements.txt
+npm install
 ```
 
 2. Copy `.env.example` to `.env` and fill in your credentials:
@@ -44,42 +44,44 @@ cp .env.example .env
 export NGROK_AUTH_TOKEN=your_ngrok_auth_token
 ```
 
+If you are not using `--ngrok`, set `PUBLIC_WS_URL` in `.env` to a reachable WSS URL for `/telnyx`.
+
 ## Usage
 
 ### Make an outbound call (exits when call ends):
 ```bash
-python telnyx_voice_agent.py --to "+1234567890" --ngrok
+node telnyx_voice_agent.js --to "+1234567890" --ngrok
 ```
 
 ### Custom agent persona:
 ```bash
-python telnyx_voice_agent.py --to "+1234567890" --ngrok \
-  --prompt "You are a helpful assistant for Acme Corp..." \
-  --greeting "Hello! Thanks for calling Acme Corp. How can I help?"
+node telnyx_voice_agent.js --to "+1234567890" --ngrok \
+  --personality "You are a helpful assistant for Acme Corp..." \
+  --task "Follow up with Morgan about order three seven one nine and confirm delivery window."
 ```
 
 ### Use a different LLM model:
 ```bash
-# Use OpenAI GPT-4o-mini instead of default Claude
-python telnyx_voice_agent.py --to "+1234567890" --ngrok --model "gpt-4o-mini"
+# Use OpenAI GPT-4o-mini (default)
+node telnyx_voice_agent.js --to "+1234567890" --ngrok --model "gpt-4o-mini"
 
-# Use Claude Sonnet 4.5
-python telnyx_voice_agent.py --to "+1234567890" --ngrok --model "claude-sonnet-4-5"
+# Use Claude Sonnet 4
+node telnyx_voice_agent.js --to "+1234567890" --ngrok --model "claude-sonnet-4-20250514"
 ```
 
 ### Debug mode:
 ```bash
-python telnyx_voice_agent.py --to "+1234567890" --ngrok --debug
+node telnyx_voice_agent.js --to "+1234567890" --ngrok --debug
 ```
 
 ### Server-only mode (stays running for multiple/inbound calls):
 ```bash
-python telnyx_voice_agent.py --server-only --ngrok
+node telnyx_voice_agent.js --server-only --ngrok
 ```
 
 ### With custom ngrok domain (paid plan):
 ```bash
-python telnyx_voice_agent.py --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
+node telnyx_voice_agent.js --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
 ```
 
 ## Architecture
@@ -87,21 +89,22 @@ python telnyx_voice_agent.py --to "+1234567890" --ngrok --ngrok-domain your-doma
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │    Phone     │◄───►│    Telnyx    │◄───►│  This Server │
-│   (mulaw)    │     │   (WebSocket)│     │  (FastAPI)   │
+│   (mulaw)    │     │   (WebSocket)│     │ (Node.js/ws) │
 └──────────────┘     └──────────────┘     └──────┬───────┘
-                                                 │
-                                          Thread-safe queues
-                                                 │
-                                          ┌──────▼───────┐
-                                          │   Deepgram   │
-                                          │ Voice Agent  │
-                                          │  (linear16)  │
-                                          └──────────────┘
+                                                  │
+                                           Event-driven bridge
+                                                  │
+                                           ┌──────▼───────┐
+                                           │   Deepgram   │
+                                           │ Voice Agent  │
+                                           │  (linear16)  │
+                                           └──────────────┘
 ```
 
 - **Telnyx**: Handles phone connectivity, sends/receives mulaw 8kHz audio
-- **FastAPI**: WebSocket server bridging Telnyx and Deepgram
+- **Node.js + ws**: WebSocket server bridging Telnyx and Deepgram
 - **Deepgram Voice Agent**: All-in-one STT + LLM + TTS (configurable model)
+- **@ngrok/ngrok**: Built-in tunnel management for `--ngrok`
 
 ## Supported LLM Models
 
@@ -109,10 +112,10 @@ Use `--model` to select the LLM (managed by Deepgram):
 
 | Provider | Models |
 |----------|--------|
-| **Anthropic** | claude-sonnet-4-5, claude-4-5-haiku-latest, claude-3-5-haiku-latest (default), claude-sonnet-4-20250514 |
-| **OpenAI** | gpt-5.1-chat-latest, gpt-5.1, gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, gpt-4o, gpt-4o-mini |
+| **Anthropic** | claude-3-5-haiku-latest, claude-sonnet-4-20250514 |
+| **OpenAI** | gpt-4o-mini (default), gpt-5.1-chat-latest, gpt-5.1, gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, gpt-4o |
 
-Run `python telnyx_voice_agent.py --help` to see all available models.
+Run `node telnyx_voice_agent.js --help` to see all available models.
 
 ## Environment Variables
 
@@ -127,19 +130,55 @@ Run `python telnyx_voice_agent.py --help` to see all available models.
 | `SERVER_PORT` | Server port (default: 8765) |
 | `NGROK_AUTH_TOKEN` | ngrok auth token (optional, for --ngrok flag) |
 
-## Adding Custom Tools
+## Troubleshooting
 
-Edit the `TOOL_HANDLERS` dict and `create_agent_settings()` in `telnyx_voice_agent.py`:
+- **Call rings but no audio**:
+  - Verify `DEEPGRAM_API_KEY` is valid and has Voice Agent access.
+  - Run with `--debug` and check for Deepgram `401` errors.
+- **ngrok fails to start**:
+  - Ensure `NGROK_AUTH_TOKEN` is set.
+  - Ensure your ngrok account is verified.
+- **Port bind error (`EADDRINUSE`/`EPERM`)**:
+  - Change `SERVER_PORT` (for example `SERVER_PORT=8788`).
 
-```python
-def my_tool_handler(parameters: dict) -> str:
-    # Your logic here
-    return "Result"
+## ClawHub Prep
 
-TOOL_HANDLERS = {
-    "my_tool": my_tool_handler,
-    # ...
-}
+Manual publish workflow (recommended):
+
+1. Validate package locally:
+```bash
+npm run check
+```
+2. Ensure `SKILL.md` metadata and commands match current behavior.
+3. Login once:
+```bash
+npx clawhub login
+```
+4. Publish manually with explicit version/tags:
+```bash
+npx clawhub publish . \
+  --slug telnyx-voice-agent \
+  --name "Telnyx Voice Agent" \
+  --version 1.0.0 \
+  --tags latest,voice,phone,telnyx,deepgram \
+  --changelog "Initial JavaScript release with Telnyx + Deepgram voice calling."
 ```
 
-Then add the function definition in `create_agent_settings()`.
+Notes:
+- This project is prepared for manual publish; it does not auto-publish.
+- Bump `--version` and changelog text for each new release.
+
+## Adding Custom Tools
+
+Edit `TOOL_HANDLERS` and `createAgentSettings()` in `telnyx_voice_agent.js`:
+
+```js
+async function myToolHandler(parameters) {
+  // Your logic here
+  return "Result";
+}
+
+TOOL_HANDLERS.my_tool = myToolHandler;
+```
+
+Then add the function definition in `createAgentSettings()`.

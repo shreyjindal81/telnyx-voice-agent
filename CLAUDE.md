@@ -4,115 +4,117 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered phone agent using Deepgram Voice Agent API (STT + LLM + TTS) and Telnyx for telephony. Single-file Python application that makes outbound calls with an AI voice agent.
+AI-powered phone agent using Deepgram Voice Agent API (STT + LLM + TTS) and Telnyx for telephony. Single-file Node.js application that makes outbound calls with an AI voice agent.
+
+The script manages tunnels with `@ngrok/ngrok` when `--ngrok` is used.
 
 ## Commands
 
 ```bash
+# Install dependencies
+npm install
+
 # Make outbound call (exits cleanly after call ends)
-python telnyx_voice_agent.py --to "+1234567890" --ngrok
+node telnyx_voice_agent.js --to "+1234567890" --ngrok
 
 # With personality and task (recommended)
-python telnyx_voice_agent.py --to "+1234567890" --ngrok \
+node telnyx_voice_agent.js --to "+1234567890" --ngrok \
   --personality "Sarah, a friendly receptionist at Smile Dental" \
   --task "Confirm John's appointment for Tuesday at 3pm"
 
 # With custom greeting
-python telnyx_voice_agent.py --to "+1234567890" --ngrok \
+node telnyx_voice_agent.js --to "+1234567890" --ngrok \
   --personality "Sales rep at Acme Corp" \
   --task "Follow up on quote #12345" \
   --greeting "Hi, is this John? This is Sarah from Acme Corp."
 
-# With different LLM model (default: claude-3-5-haiku-latest)
-python telnyx_voice_agent.py --to "+1234567890" --ngrok --model "gpt-4o-mini"
+# With different LLM model (default: gpt-4o-mini)
+node telnyx_voice_agent.js --to "+1234567890" --ngrok --model "gpt-4o-mini"
 
 # With different TTS voice (default: elevenlabs/rachel)
-python telnyx_voice_agent.py --to "+1234567890" --ngrok --voice "elevenlabs/adam"
-python telnyx_voice_agent.py --to "+1234567890" --ngrok --voice "deepgram/aura-2-orion-en"
+node telnyx_voice_agent.js --to "+1234567890" --ngrok --voice "elevenlabs/adam"
+node telnyx_voice_agent.js --to "+1234567890" --ngrok --voice "deepgram/aura-2-orion-en"
 
 # Debug mode (verbose logging)
-python telnyx_voice_agent.py --to "+1234567890" --ngrok --debug
+node telnyx_voice_agent.js --to "+1234567890" --ngrok --debug
 
 # Server-only mode (stays running for inbound calls)
-python telnyx_voice_agent.py --server-only --ngrok
+node telnyx_voice_agent.js --server-only --ngrok
 
 # Custom ngrok domain (paid plan)
-python telnyx_voice_agent.py --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
+node telnyx_voice_agent.js --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
 ```
 
 ## Architecture
 
-The system bridges async FastAPI with the synchronous Deepgram SDK using thread-safe queues:
+The system uses an event-driven Node.js WebSocket bridge:
 
 ```
-Phone ←→ Telnyx (mulaw 8kHz) ←→ FastAPI ←→ Deepgram Thread (linear16 16kHz) ←→ Deepgram Voice Agent
+Phone ←→ Telnyx (mulaw 8kHz) ←→ Node.js/ws bridge ←→ Deepgram Voice Agent (linear16 16kHz/24kHz)
 ```
 
-**Threading model**: FastAPI runs async; Deepgram SDK is sync and runs in a dedicated thread. Communication happens via `queue.Queue`:
-- `input_queue`: Telnyx audio → Deepgram
-- `output_queue`: Deepgram audio → Telnyx
+- `CallSession`: Per-call state including output queue, barge-in flags, and Deepgram socket
+- `SessionManager`: Creates/tracks/cleans up sessions
+- `CallManager`: Telnyx REST wrapper for outbound calls and hangup
+- `/telnyx` WebSocket: Bidirectional Telnyx media stream handler
+- `/webhook` HTTP endpoint: Telnyx webhook receiver
+- `TOOL_HANDLERS`: Function-call handlers (`get_secret`, `hangup`)
+- `createAgentSettings()`: Deepgram agent settings payload builder
 
-**Audio conversion**: Telnyx uses mulaw 8kHz (PCMU), Deepgram uses linear16 16kHz. Conversion via `audioop` (or `audioop-lts` for Python 3.13+).
-
-**Cross-thread signaling**: Uses `asyncio.Event` + `call_soon_threadsafe()` pattern for immediate notification from sync Deepgram thread to async FastAPI context. Used for:
-- **Barge-in**: `barge_in_async_notify` - clears output queue and sends `{"event": "clear"}` to Telnyx
-- **Hangup**: `hangup_async_notify` - executes hangup immediately when tool is called
-
-## Key Components in telnyx_voice_agent.py
-
-- `CallSession`: Per-call state including thread-safe queues, async events, and output sample rate
-- `deepgram_worker()`: Runs Deepgram connection in dedicated thread, handles message routing
-- `SessionManager`: Creates/tracks/cleanup call sessions
-- `CallManager`: Telnyx API wrapper for outbound calls and hangup
-- `@app.websocket("/telnyx")`: Main WebSocket handler bridging Telnyx ↔ Deepgram
-- `TOOL_HANDLERS`: Dict mapping function names to handlers (e.g., `get_secret`, `hangup`)
-- `VALID_MODELS`: Dict mapping provider names to supported model IDs
-- `VALID_VOICES`: Dict mapping TTS providers to voice configurations
-- `create_think_provider()`: Factory function to create the appropriate LLM provider
-- `create_speak_provider()`: Factory function to create the appropriate TTS provider
-- `shutdown_event`: Signals clean exit after outbound call completes
+Audio conversion is done in-process:
+- Telnyx inbound: mulaw 8kHz → linear16 16kHz
+- Deepgram outbound: linear16 16kHz/24kHz → mulaw 8kHz
 
 ## Supported LLM Models
 
-Deepgram Voice Agent supports multiple LLM providers (managed by Deepgram, no API keys needed):
+- **Anthropic**: `claude-3-5-haiku-latest`, `claude-sonnet-4-20250514`
+- **OpenAI**: `gpt-5.1-chat-latest`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4o`, `gpt-4o-mini`
 
-- **Anthropic**: claude-3-5-haiku-latest, claude-sonnet-4-20250514
-- **OpenAI**: gpt-4o, gpt-4o-mini
-
-Default: `claude-3-5-haiku-latest`
+Default: `gpt-4o-mini`
 
 ## Supported TTS Voices
 
-Use the `--voice` flag with format `provider/voice-id`:
+Use `--voice` with format `provider/voice-id`:
 
-- **Deepgram** (16kHz output): aura-2-thalia-en, aura-2-luna-en, aura-2-stella-en, aura-2-athena-en, aura-2-hera-en, aura-2-orion-en, aura-2-arcas-en, aura-2-perseus-en, aura-2-angus-en, aura-2-orpheus-en, aura-2-helios-en, aura-2-zeus-en
-- **ElevenLabs** (24kHz output): rachel, adam, bella, josh, elli, sam
+- **Deepgram** (16kHz output): `aura-2-thalia-en`, `aura-2-luna-en`, `aura-2-stella-en`, `aura-2-athena-en`, `aura-2-hera-en`, `aura-2-orion-en`, `aura-2-arcas-en`, `aura-2-perseus-en`, `aura-2-angus-en`, `aura-2-orpheus-en`, `aura-2-helios-en`, `aura-2-zeus-en`
+- **ElevenLabs** (24kHz output): `rachel`, `adam`, `bella`, `josh`, `elli`, `sam`
 
 Default: `elevenlabs/rachel`
 
-Audio conversion handles sample rate differences automatically (16kHz or 24kHz → 8kHz mulaw for Telnyx).
-
 ## CLI Arguments
 
-- `--to` - Phone number to call (E.164 format)
-- `--personality` - Agent personality description (who they are)
-- `--task` - Task for the call (what to accomplish)
-- `--greeting` - Custom opening greeting
-- `--voice` - TTS voice (provider/voice-id format)
-- `--model` - LLM model to use
-- `--ngrok` - Auto-start ngrok tunnel
-- `--debug` - Enable verbose logging
-- `--server-only` - Run as server only (no outbound call)
-
-The system prompt is built from a base template that ensures natural conversation + the personality and task you provide. The agent will NOT assume information - only use what's explicitly given.
+- `--to`: Phone number to call (E.164 format)
+- `--personality`: Agent personality description (who they are)
+- `--task`: Task for the call (what to accomplish)
+- `--greeting`: Custom opening greeting
+- `--voice`: TTS voice (`provider/voice-id` format)
+- `--model`: LLM model to use
+- `--ngrok`: Auto-start ngrok tunnel
+- `--ngrok-domain`: Custom ngrok domain
+- `--debug`: Enable verbose logging
+- `--server-only`: Run server only (no outbound call)
 
 ## Adding Custom Tools
 
-1. Add handler to `TOOL_HANDLERS` dict
-2. Add `AgentV1Function` definition in `create_agent_settings()`
+1. Add a handler function to `TOOL_HANDLERS`
+2. Add the function definition in `createAgentSettings()`
 
 ## Environment Variables
 
 Required: `TELNYX_API_KEY`, `TELNYX_CONNECTION_ID`, `TELNYX_PHONE_NUMBER`, `DEEPGRAM_API_KEY`
 
 Optional: `NGROK_AUTH_TOKEN` (for `--ngrok`), `PUBLIC_WS_URL` (if not using ngrok), `SERVER_HOST`, `SERVER_PORT`
+
+## Operational Notes
+
+- `--ngrok` requires a valid `NGROK_AUTH_TOKEN` and verified ngrok account.
+- If calls connect but there is no audio, check Deepgram auth first (`401` means bad key or missing access).
+- If port binding fails, set a different port (for example `SERVER_PORT=8788`).
+
+## ClawHub Release Notes
+
+- Do not auto-publish from agent flows.
+- Before user-driven publish:
+  - Run `npm run check`
+  - Confirm `SKILL.md` frontmatter and examples are current
+  - Use explicit CLI publish flags (`--slug`, `--name`, `--version`, `--tags`, `--changelog`)

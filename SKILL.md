@@ -1,7 +1,7 @@
 ---
 name: telnyx-voice-agent
-description: Make AI-powered outbound phone calls. Always use ElevenLabs voices for natural sound.
-metadata: {"openclaw": {"emoji": "📞", "requires": {"bins": ["python3"], "env": ["TELNYX_API_KEY", "TELNYX_CONNECTION_ID", "TELNYX_PHONE_NUMBER", "DEEPGRAM_API_KEY"]}, "os": ["darwin", "linux"]}}
+description: Run AI-powered outbound phone calls with Telnyx + Deepgram Voice Agent. Use when the user wants real phone outreach (follow-ups, confirmations, reminders, callbacks) with configurable personality, task context, model, and voice.
+metadata: {"openclaw": {"emoji": "📞", "requires": {"bins": ["node", "npm"], "env": ["TELNYX_API_KEY", "TELNYX_CONNECTION_ID", "TELNYX_PHONE_NUMBER", "DEEPGRAM_API_KEY"]}, "primaryEnv": "TELNYX_API_KEY", "os": ["darwin", "linux"]}}
 ---
 
 # Telnyx Voice Agent - Outbound Calls
@@ -30,23 +30,26 @@ When invoking this skill, you MUST provide rich, detailed context. The voice age
 
 ## Prerequisites
 
-Install Python dependencies (one-time):
+Install JavaScript dependencies (one-time):
 ```bash
-pip install -r {baseDir}/requirements.txt
+npm --prefix {baseDir} install
 ```
+
+If using `--ngrok`, `NGROK_AUTH_TOKEN` must be configured and the ngrok account must be verified.
+If not using `--ngrok`, set `PUBLIC_WS_URL` to a reachable `wss://.../telnyx` endpoint.
 
 ## Commands
 
 ### Basic call:
 ```bash
-python3 {baseDir}/telnyx_voice_agent.py --to "+15551234567" --ngrok \
+node {baseDir}/telnyx_voice_agent.js --to "+15551234567" --ngrok \
   --personality "<detailed personality>" \
   --task "<detailed task with all context>"
 ```
 
 ### Full example (complex multi-topic call):
 ```bash
-python3 {baseDir}/telnyx_voice_agent.py \
+node {baseDir}/telnyx_voice_agent.js \
   --to "+15551234567" \
   --ngrok \
   --personality "Emma, a warm and experienced veterinary receptionist at Pawsitive Care Animal Hospital. You've worked there for 5 years and genuinely love animals. You know all the vets by name - Dr. Chen specializes in surgery, Dr. Patel handles general wellness, and Dr. Morrison is the exotic animals expert. You're organized but personable." \
@@ -59,7 +62,7 @@ python3 {baseDir}/telnyx_voice_agent.py \
 When calling back after a previous conversation, include the full transcript in the task to maintain continuity. The agent will understand the context and pick up where you left off.
 
 ```bash
-python3 {baseDir}/telnyx_voice_agent.py \
+node {baseDir}/telnyx_voice_agent.js \
   --to "+15551234567" \
   --ngrok \
   --personality "Emma, a warm veterinary receptionist at Pawsitive Care. You called earlier and promised to call back with info." \
@@ -89,6 +92,10 @@ Always use ElevenLabs voices unless user specifies otherwise:
 - `elevenlabs/adam` - Male
 - `elevenlabs/josh` - Male (deeper voice)
 
+## Model Selection
+
+Fast default: `gpt-4o-mini`
+
 ## Output
 
 The call transcript will be returned, containing the full conversation. Use this to:
@@ -102,3 +109,4 @@ The call transcript will be returned, containing the full conversation. Use this
 - If asked something it doesn't know, it will offer to hang up and call back
 - ngrok tunnel is automatically managed
 - Environment variables must be configured in OpenClaw settings
+- If a call connects with no audio, check `DEEPGRAM_API_KEY` validity/entitlement first
