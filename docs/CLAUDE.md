@@ -13,37 +13,37 @@ Call recordings are enabled by default, saved locally, then deleted from Telnyx 
 
 ```bash
 # Install dependencies
-npm install
+npm --prefix skill install
 
 # Make outbound call (exits cleanly after call ends)
-node telnyx_voice_agent.js --to "+1234567890" --ngrok
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok
 
 # With personality and task (recommended)
-node telnyx_voice_agent.js --to "+1234567890" --ngrok \
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok \
   --personality "Sarah, a friendly receptionist at Smile Dental" \
   --task "Confirm John's appointment for Tuesday at 3pm"
 
 # With custom greeting
-node telnyx_voice_agent.js --to "+1234567890" --ngrok \
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok \
   --personality "Sales rep at Acme Corp" \
   --task "Follow up on quote #12345" \
   --greeting "Hi, is this John? This is Sarah from Acme Corp."
 
 # With different LLM model (default: gpt-4o-mini)
-node telnyx_voice_agent.js --to "+1234567890" --ngrok --model "gpt-4o-mini"
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok --model "gpt-4o-mini"
 
 # With different TTS voice (default: elevenlabs/rachel)
-node telnyx_voice_agent.js --to "+1234567890" --ngrok --voice "elevenlabs/adam"
-node telnyx_voice_agent.js --to "+1234567890" --ngrok --voice "deepgram/aura-2-orion-en"
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok --voice "elevenlabs/adam"
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok --voice "deepgram/aura-2-orion-en"
 
 # Debug mode (verbose logging)
-node telnyx_voice_agent.js --to "+1234567890" --ngrok --debug
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok --debug
 
 # Server-only mode (stays running for inbound calls)
-node telnyx_voice_agent.js --server-only --ngrok
+node skill/telnyx_voice_agent.js --server-only --ngrok
 
 # Custom ngrok domain (paid plan)
-node telnyx_voice_agent.js --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
 ```
 
 ## Architecture
@@ -117,6 +117,6 @@ Optional: `NGROK_AUTH_TOKEN` (for `--ngrok`), `PUBLIC_WS_URL` (if not using ngro
 
 - Do not auto-publish from agent flows.
 - Before user-driven publish:
-  - Run `npm run check`
-  - Confirm `SKILL.md` frontmatter and examples are current
+  - Run `npm --prefix skill run check`
+  - Confirm `skill/SKILL.md` frontmatter and examples are current
   - Use explicit CLI publish flags (`--slug`, `--name`, `--version`, `--tags`, `--changelog`)

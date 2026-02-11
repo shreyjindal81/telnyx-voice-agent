@@ -4,6 +4,12 @@ Production-style AI phone calls with real PSTN delivery.
 
 This project bridges Telnyx media streams to Deepgram Voice Agent and gives you a CLI for outbound and server-only calling workflows. It is designed for practical outreach use cases: confirmations, follow-ups, reminders, callbacks, and scripted operations calls.
 
+## Skill-First Structure
+
+- `skill/`: publishable skill package (`SKILL.md`, runtime, package files, env example)
+- `docs/`: maintainer docs and deep technical references
+- `scripts/`: operational helpers (including installer)
+
 ## Why This Is Useful
 
 - Real phone calls over Telnyx, not browser-only demos
@@ -27,8 +33,8 @@ This project bridges Telnyx media streams to Deepgram Voice Agent and gives you 
 ### 1. Install
 
 ```bash
-npm install
-cp .env.example .env
+npm --prefix skill install
+cp skill/.env.example .env
 ```
 
 ### 2. Fill required env vars in `.env`
@@ -54,7 +60,7 @@ If using local development, easiest path is `--ngrok` and let this script create
 ### 4. Place a test call
 
 ```bash
-node telnyx_voice_agent.js --to "+1234567890" --ngrok \
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok \
   --task "Quick test call. Confirm audio is clear, then end politely."
 ```
 
@@ -98,13 +104,13 @@ Pricing references:
 ### Basic outbound call
 
 ```bash
-node telnyx_voice_agent.js --to "+1234567890" --ngrok
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok
 ```
 
 ### High-context production call
 
 ```bash
-node telnyx_voice_agent.js --to "+1234567890" --ngrok \
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok \
   --personality "Maya, a calm and professional clinic coordinator at Lakeside Health." \
   --task "Confirm tomorrow's appointment for Jordan Lee at two thirty PM, verify callback number, and offer reschedule slots if needed." \
   --greeting "Hi, this is Maya from Lakeside Health. Is now a good time for a quick appointment confirmation?"
@@ -113,7 +119,7 @@ node telnyx_voice_agent.js --to "+1234567890" --ngrok \
 ### Choose model and voice
 
 ```bash
-node telnyx_voice_agent.js --to "+1234567890" --ngrok \
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok \
   --model "claude-sonnet-4-20250514" \
   --voice "elevenlabs/rachel"
 ```
@@ -121,19 +127,19 @@ node telnyx_voice_agent.js --to "+1234567890" --ngrok \
 ### Debug mode
 
 ```bash
-node telnyx_voice_agent.js --to "+1234567890" --ngrok --debug
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok --debug
 ```
 
 ### Server-only mode (inbound or multi-call runtime)
 
 ```bash
-node telnyx_voice_agent.js --server-only --ngrok
+node skill/telnyx_voice_agent.js --server-only --ngrok
 ```
 
 ### Custom ngrok domain
 
 ```bash
-node telnyx_voice_agent.js --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
+node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok --ngrok-domain your-domain.ngrok-free.dev
 ```
 
 ## Recording Behavior (Default)
@@ -170,7 +176,7 @@ Use `--model`:
 - Anthropic: `claude-3-5-haiku-latest`, `claude-sonnet-4-20250514`
 - OpenAI: `gpt-5.1-chat-latest`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4o`, `gpt-4o-mini` (default)
 
-Run `node telnyx_voice_agent.js --help` for current model and voice lists.
+Run `node skill/telnyx_voice_agent.js --help` for current model and voice lists.
 
 ## Architecture
 
@@ -199,7 +205,7 @@ Core components:
 - Set a different port:
 
 ```bash
-SERVER_PORT=8788 node telnyx_voice_agent.js --to "+1234567890" --ngrok
+SERVER_PORT=8788 node skill/telnyx_voice_agent.js --to "+1234567890" --ngrok
 ```
 
 ### Recording URL appears but no local file
@@ -217,7 +223,7 @@ SERVER_PORT=8788 node telnyx_voice_agent.js --to "+1234567890" --ngrok
 1. Validate:
 
 ```bash
-npm run check
+npm --prefix skill run check
 ```
 
 2. Login:
@@ -229,7 +235,7 @@ npx clawhub login
 3. Publish:
 
 ```bash
-npx clawhub publish . \
+npx clawhub publish ./skill \
   --slug telnyx-voice-agent \
   --name "Telnyx Voice Agent" \
   --version 1.0.1 \
@@ -239,4 +245,4 @@ npx clawhub publish . \
 
 ## Extending With Custom Tools
 
-Add handlers in `TOOL_HANDLERS` and define matching function schemas in `createAgentSettings()` inside `telnyx_voice_agent.js`.
+Add handlers in `TOOL_HANDLERS` and define matching function schemas in `createAgentSettings()` inside `skill/telnyx_voice_agent.js`.

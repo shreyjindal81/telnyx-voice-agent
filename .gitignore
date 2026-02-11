@@ -25,6 +25,7 @@ npm-debug.log*
 *.log
 /tmp/
 recordings/
+skill/recordings/
 
 # OS
 .DS_Store
