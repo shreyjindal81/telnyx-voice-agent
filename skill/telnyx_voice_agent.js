@@ -385,15 +385,83 @@ function sleep(ms) {
   });
 }
 
-async function hangupHandler(parameters) {
+const DTMF_ALLOWED_SEQUENCE_PATTERN = /^[0-9A-Da-d*#wW]+$/;
+const DTMF_HAS_TONE_PATTERN = /[0-9A-Da-d*#]/;
+const MIN_DTMF_DURATION_MILLIS = 100;
+const MAX_DTMF_DURATION_MILLIS = 500;
+
+function parseSendDtmfParameters(parameters) {
+  if (!parameters || typeof parameters !== "object") {
+    throw new Error("send_dtmf expects an object with a digits field.");
+  }
+
+  if (typeof parameters.digits !== "string") {
+    throw new Error("send_dtmf digits must be a string.");
+  }
+
+  const digits = parameters.digits.replace(/\s+/g, "");
+  if (!digits) {
+    throw new Error("send_dtmf digits cannot be empty.");
+  }
+
+  if (!DTMF_ALLOWED_SEQUENCE_PATTERN.test(digits)) {
+    throw new Error("send_dtmf digits can only contain 0-9, A-D, *, #, w, or W.");
+  }
+
+  if (!DTMF_HAS_TONE_PATTERN.test(digits)) {
+    throw new Error("send_dtmf digits must include at least one DTMF tone (0-9, A-D, *, or #).");
+  }
+
+  const durationRaw = parameters.duration_millis;
+  if (durationRaw === undefined || durationRaw === null) {
+    return { digits, durationMillis: null };
+  }
+
+  if (!Number.isInteger(durationRaw)) {
+    throw new Error("send_dtmf duration_millis must be an integer.");
+  }
+
+  if (durationRaw < MIN_DTMF_DURATION_MILLIS || durationRaw > MAX_DTMF_DURATION_MILLIS) {
+    throw new Error(
+      `send_dtmf duration_millis must be between ${MIN_DTMF_DURATION_MILLIS} and ${MAX_DTMF_DURATION_MILLIS}.`,
+    );
+  }
+
+  return { digits, durationMillis: durationRaw };
+}
+
+async function hangupHandler(parameters, _context) {
   const reason = parameters.reason || "unspecified";
   logger.info(`[TOOL] hangup called - reason: ${reason}`);
   await sleep(1000);
   return "Call ended.";
 }
 
+async function sendDtmfHandler(parameters, context) {
+  const { session, callManager: activeCallManager } = context || {};
+  const { digits, durationMillis } = parseSendDtmfParameters(parameters || {});
+
+  if (!activeCallManager) {
+    throw new Error("Call manager unavailable for send_dtmf.");
+  }
+
+  if (!session || !session.callControlId) {
+    throw new Error("Cannot send DTMF without an active call_control_id.");
+  }
+
+  logger.info(
+    `[TOOL] send_dtmf called - digits: ${digits}, duration_millis: ${
+      durationMillis === null ? "default" : durationMillis
+    }`,
+  );
+
+  await activeCallManager.sendDtmf(session.callControlId, { digits, durationMillis });
+  return `DTMF sent (${digits.length} chars).`;
+}
+
 const TOOL_HANDLERS = {
   hangup: hangupHandler,
+  send_dtmf: sendDtmfHandler,
 };
 
 class CallSession {
@@ -529,6 +597,29 @@ function createAgentSettings({ personality, task, greeting, model, voice }) {
                 },
               },
               required: ["reason"],
+            },
+          },
+          {
+            name: "send_dtmf",
+            description:
+              "Send DTMF keypad tones to the live phone call (for IVR menus and keypad prompts).\n\n" +
+              "Use this ONLY when the callee or IVR explicitly asks for keypad input. Do not guess menu options.\n\n" +
+              "You may include pauses with 'w' (half second) or 'W' (one second), for example: '1ww2#'.",
+            parameters: {
+              type: "object",
+              properties: {
+                digits: {
+                  type: "string",
+                  description: "DTMF sequence to send. Allowed: 0-9, A-D, *, #, w, W. Example: '1ww2#'.",
+                },
+                duration_millis: {
+                  type: "integer",
+                  description: "Optional tone duration in milliseconds for each DTMF digit (100-500).",
+                  minimum: MIN_DTMF_DURATION_MILLIS,
+                  maximum: MAX_DTMF_DURATION_MILLIS,
+                },
+              },
+              required: ["digits"],
             },
           },
         ],
@@ -699,6 +790,31 @@ class CallManager {
       }
     } catch (error) {
       logger.error(`[Telnyx] Hangup error: ${error.message}`);
+    }
+  }
+
+  async sendDtmf(callControlId, { digits, durationMillis = null }) {
+    if (!callControlId) {
+      throw new Error("Missing call_control_id for send_dtmf.");
+    }
+
+    const payload = { digits };
+    if (durationMillis !== null && durationMillis !== undefined) {
+      payload.duration_millis = durationMillis;
+    }
+
+    const response = await fetch(
+      `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/send_dtmf`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(payload),
+      },
+    );
+
+    if (!response.ok) {
+      const bodyText = await response.text();
+      throw new Error(`Telnyx send_dtmf failed (${response.status}): ${bodyText}`);
     }
   }
 
@@ -1137,6 +1253,21 @@ class CallManager {
   }
 }
 
+function sendFunctionCallResponse(deepgramSocket, funcName, funcId, content) {
+  if (!deepgramSocket || deepgramSocket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  deepgramSocket.send(
+    JSON.stringify({
+      type: "FunctionCallResponse",
+      name: funcName,
+      content: String(content),
+      id: funcId,
+    }),
+  );
+}
+
 async function handleFunctionCallRequest(message, deepgramSocket, session) {
   const functions = Array.isArray(message.functions) ? message.functions : [];
 
@@ -1149,12 +1280,22 @@ async function handleFunctionCallRequest(message, deepgramSocket, session) {
 
     const handler = TOOL_HANDLERS[funcName];
     if (!handler) {
+      logger.warn(`[Function] Unsupported function requested: ${funcName}`);
+      sendFunctionCallResponse(deepgramSocket, funcName, funcId, `Unsupported function: ${funcName}`);
+      continue;
+    }
+
+    let params = {};
+    try {
+      params = argsString ? JSON.parse(argsString) : {};
+    } catch (error) {
+      logger.error(`[Function] Invalid JSON arguments for ${funcName}: ${error.message}`);
+      sendFunctionCallResponse(deepgramSocket, funcName, funcId, `Error: Invalid function arguments.`);
       continue;
     }
 
     try {
-      const params = argsString ? JSON.parse(argsString) : {};
-      const result = await handler(params);
+      const result = await handler(params, { session, callManager });
 
       if (funcName === "hangup") {
         session.shouldHangup = true;
@@ -1164,18 +1305,10 @@ async function handleFunctionCallRequest(message, deepgramSocket, session) {
         session.stop = true;
       }
 
-      if (deepgramSocket.readyState === WebSocket.OPEN) {
-        deepgramSocket.send(
-          JSON.stringify({
-            type: "FunctionCallResponse",
-            name: funcName,
-            content: String(result),
-            id: funcId,
-          }),
-        );
-      }
+      sendFunctionCallResponse(deepgramSocket, funcName, funcId, result);
     } catch (error) {
       logger.error(`[Function] Error executing ${funcName}: ${error.message}`);
+      sendFunctionCallResponse(deepgramSocket, funcName, funcId, `Error: ${error.message}`);
     }
   }
 }

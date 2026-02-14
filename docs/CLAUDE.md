@@ -59,7 +59,7 @@ Phone ←→ Telnyx (mulaw 8kHz) ←→ Node.js/ws bridge ←→ Deepgram Voice 
 - `CallManager`: Telnyx REST wrapper for outbound calls, hangup, recording retrieval, local persistence, and Telnyx cleanup
 - `/telnyx` WebSocket: Bidirectional Telnyx media stream handler
 - `/webhook` HTTP endpoint: Telnyx webhook receiver
-- `TOOL_HANDLERS`: Function-call handlers (`hangup`)
+- `TOOL_HANDLERS`: Function-call handlers (`hangup`, `send_dtmf`)
 - `createAgentSettings()`: Deepgram agent settings payload builder
 
 Audio conversion is done in-process:
@@ -99,6 +99,10 @@ Default: `elevenlabs/rachel`
 
 1. Add a handler function to `TOOL_HANDLERS`
 2. Add the function definition in `createAgentSettings()`
+
+Current built-in tools:
+- `hangup`: Ends the call.
+- `send_dtmf`: Sends DTMF tones with `digits` and optional `duration_millis` (100-500).
 
 ## Environment Variables
 

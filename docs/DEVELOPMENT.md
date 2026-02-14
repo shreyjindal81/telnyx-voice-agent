@@ -469,6 +469,18 @@ AgentV1Think(
             name="hangup",
             description="Ends the call when the user says goodbye.",
             parameters={"type": "object", "properties": {}, "required": []}
+        ),
+        AgentV1Function(
+            name="send_dtmf",
+            description="Sends DTMF digits to the live call for IVR input.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "digits": {"type": "string"},
+                    "duration_millis": {"type": "integer", "minimum": 100, "maximum": 500}
+                },
+                "required": ["digits"]
+            }
         )
     ]
 )
@@ -479,6 +491,7 @@ AgentV1Think(
 ```python
 TOOL_HANDLERS = {
     "hangup": lambda params: "Call ended. Goodbye!",
+    "send_dtmf": send_dtmf_handler,
 }
 
 def handle_function_call(message, connection, session):
@@ -531,6 +544,13 @@ Deepgram Thread (sync)              Async Context (FastAPI)
 ```
 
 This ensures the call ends within milliseconds of the tool being triggered, rather than waiting for a timeout.
+
+### DTMF Tool Notes
+
+- `send_dtmf` calls Telnyx `actions/send_dtmf` on the active `call_control_id`.
+- Allowed `digits` characters: `0-9`, `A-D`, `*`, `#`, plus pause tokens `w` (half-second) and `W` (one-second).
+- Optional `duration_millis` applies to each DTMF tone and is validated to `100-500`.
+- Tool responses are returned to Deepgram even on validation/API failure so the model can recover in-dialog.
 
 ### Adding Custom Tools
 

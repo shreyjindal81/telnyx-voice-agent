@@ -270,3 +270,7 @@ npx clawhub publish ./skill \
 ## Extending With Custom Tools
 
 Add handlers in `TOOL_HANDLERS` and define matching function schemas in `createAgentSettings()` inside `skill/telnyx_voice_agent.js`.
+
+Built-in tools now include:
+- `hangup`: end the call politely
+- `send_dtmf`: send keypad tones (`digits` with optional `duration_millis`)
